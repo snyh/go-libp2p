@@ -261,6 +261,25 @@ func NewHost(ctx context.Context, n network.Network, opts *HostOpts) (*BasicHost
 	return h, nil
 }
 
+func (h *BasicHost) shouldUpdateLocalIpAddr() bool {
+	all := h.network.ListenAddresses()
+	if len(all) == 0 {
+		return false
+	}
+	if len(all) > 1 {
+		return true
+	}
+
+	for _, a := range all {
+		for _, p := range a.Protocols() {
+			if p.Name != "p2p-circuit" {
+				return true
+			}
+		}
+	}
+	return false
+}
+
 func (h *BasicHost) updateLocalIpAddr() {
 	h.addrMu.Lock()
 	defer h.addrMu.Unlock()
@@ -520,14 +539,14 @@ func (h *BasicHost) background() {
 	defer ticker.Stop()
 
 	for {
-		if len(h.network.ListenAddresses()) > 0 {
+		if h.shouldUpdateLocalIpAddr() {
 			h.updateLocalIpAddr()
+			// Request addresses anyways because, technically, address filters still apply.
+			// The underlying AllAddrs call is effectivley a no-op.
+			curr := h.Addrs()
+			emitAddrChange(curr, lastAddrs)
+			lastAddrs = curr
 		}
-		// Request addresses anyways because, technically, address filters still apply.
-		// The underlying AllAddrs call is effectivley a no-op.
-		curr := h.Addrs()
-		emitAddrChange(curr, lastAddrs)
-		lastAddrs = curr
 
 		select {
 		case <-ticker.C:
