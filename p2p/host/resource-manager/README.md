@@ -449,7 +449,7 @@ Look at `WithAllowlistedMultiaddrs` and its example in the GoDoc to learn more.
 ## ConnManager vs Resource Manager
 
 go-libp2p already includes a [connection
-manager](https://pkg.go.dev/github.com/libp2p/go-libp2p-core/connmgr#ConnManager),
+manager](https://pkg.go.dev/github.com/libp2p/go-libp2p/core/connmgr#ConnManager),
 so what's the difference between the `ConnManager` and the `ResourceManager`?
 
 ConnManager:
