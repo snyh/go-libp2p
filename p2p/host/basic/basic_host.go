@@ -232,6 +232,7 @@ func NewHost(n network.Network, opts *HostOpts) (*BasicHost, error) {
 	idOpts := []identify.Option{
 		identify.UserAgent(opts.UserAgent),
 		identify.ProtocolVersion(opts.ProtocolVersion),
+		identify.DisableFilterAddrs(),
 	}
 
 	// we can't set this as a default above because it depends on the *BasicHost.

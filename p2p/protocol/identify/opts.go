@@ -4,6 +4,7 @@ type config struct {
 	protocolVersion         string
 	userAgent               string
 	disableSignedPeerRecord bool
+	disableFilterAddrs      bool
 	metricsTracer           MetricsTracer
 }
 
@@ -22,6 +23,13 @@ func ProtocolVersion(s string) Option {
 func UserAgent(ua string) Option {
 	return func(cfg *config) {
 		cfg.userAgent = ua
+	}
+}
+
+// DisableFilterAddrs disables filter the address slice based on the remote multiaddr.
+func DisableFilterAddrs() Option {
+	return func(cfg *config) {
+		cfg.disableFilterAddrs = true
 	}
 }
 

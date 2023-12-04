@@ -149,6 +149,7 @@ type idService struct {
 	refCount sync.WaitGroup
 
 	disableSignedPeerRecord bool
+	disableFilterAddrs      bool
 
 	connsMu sync.RWMutex
 	// The conns map contains all connections we're currently handling.
@@ -195,6 +196,7 @@ func NewIDService(h host.Host, opts ...Option) (*idService, error) {
 		ctxCancel:               cancel,
 		conns:                   make(map[network.Conn]entry),
 		disableSignedPeerRecord: cfg.disableSignedPeerRecord,
+		disableFilterAddrs:      cfg.disableFilterAddrs,
 		setupCompleted:          make(chan struct{}),
 		metricsTracer:           cfg.metricsTracer,
 	}
@@ -769,7 +771,11 @@ func (ids *idService) consumeMessage(mes *pb.Identify, c network.Conn, isPush bo
 	} else {
 		addrs = lmaddrs
 	}
-	ids.Host.Peerstore().AddAddrs(p, filterAddrs(addrs, c.RemoteMultiaddr()), ttl)
+	if ids.disableFilterAddrs {
+		ids.Host.Peerstore().AddAddrs(p, addrs, ttl)
+	} else {
+		ids.Host.Peerstore().AddAddrs(p, filterAddrs(addrs, c.RemoteMultiaddr()), ttl)
+	}
 
 	// Finally, expire all temporary addrs.
 	ids.Host.Peerstore().UpdateAddrs(p, peerstore.TempAddrTTL, 0)
@@ -987,7 +993,7 @@ func (nn *netNotifiee) Disconnected(_ network.Network, c network.Conn) {
 func (nn *netNotifiee) Listen(n network.Network, a ma.Multiaddr)      {}
 func (nn *netNotifiee) ListenClose(n network.Network, a ma.Multiaddr) {}
 
-// filterAddrs filters the address slice based on the remove multiaddr:
+// filterAddrs filters the address slice based on the remote multiaddr:
 // * if it's a localhost address, no filtering is applied
 // * if it's a local network address, all localhost addresses are filtered out
 // * if it's a public address, all localhost and local network addresses are filtered out
