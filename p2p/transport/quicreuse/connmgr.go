@@ -7,6 +7,7 @@ import (
 	"net"
 	"sync"
 
+	"github.com/libp2p/go-reuseport"
 	ma "github.com/multiformats/go-multiaddr"
 	manet "github.com/multiformats/go-multiaddr/net"
 	"github.com/quic-go/quic-go"
@@ -140,7 +141,8 @@ func (c *ConnManager) transportForListen(network string, laddr *net.UDPAddr) (re
 		return reuse.TransportForListen(network, laddr)
 	}
 
-	conn, err := net.ListenUDP(network, laddr)
+	conn, err := reuseport.ListenPacket(network, laddr.String())
+	// conn, err := net.ListenUDP(network, laddr)
 	if err != nil {
 		return nil, err
 	}

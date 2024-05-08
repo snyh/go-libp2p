@@ -9,6 +9,7 @@ import (
 
 	"github.com/google/gopacket/routing"
 	"github.com/libp2p/go-netroute"
+	"github.com/libp2p/go-reuseport"
 	"github.com/quic-go/quic-go"
 )
 
@@ -310,7 +311,8 @@ func (r *reuse) TransportForListen(network string, laddr *net.UDPAddr) (*refcoun
 		}
 	}
 
-	conn, err := net.ListenUDP(network, laddr)
+	conn, err := reuseport.ListenPacket(network, laddr.String())
+	// conn, err := net.ListenUDP(network, laddr)
 	if err != nil {
 		return nil, err
 	}
