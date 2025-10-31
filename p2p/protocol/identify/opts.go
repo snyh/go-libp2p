@@ -8,6 +8,7 @@ type config struct {
 	disableSignedPeerRecord bool
 	metricsTracer           MetricsTracer
 	timeout                 time.Duration
+	disableFilterAddrs      bool
 }
 
 // Option is an option function for identify.
@@ -46,5 +47,11 @@ func WithMetricsTracer(tr MetricsTracer) Option {
 func WithTimeout(timeout time.Duration) Option {
 	return func(cfg *config) {
 		cfg.timeout = timeout
+	}
+}
+
+func DisableFilterAddrs() Option {
+	return func(cfg *config) {
+		cfg.disableFilterAddrs = true
 	}
 }

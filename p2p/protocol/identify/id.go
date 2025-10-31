@@ -162,6 +162,8 @@ type idService struct {
 	disableSignedPeerRecord bool
 	timeout                 time.Duration
 
+	disableFilterAddrs bool
+
 	connsMu sync.RWMutex
 	// The conns map contains all connections we're currently handling.
 	// Connections are inserted as soon as they're available in the swarm
@@ -208,6 +210,7 @@ func NewIDService(h host.Host, opts ...Option) (*idService, error) {
 		ctxCancel:               cancel,
 		conns:                   make(map[network.Conn]entry),
 		disableSignedPeerRecord: cfg.disableSignedPeerRecord,
+		disableFilterAddrs:      cfg.disableFilterAddrs,
 		setupCompleted:          make(chan struct{}),
 		metricsTracer:           cfg.metricsTracer,
 		timeout:                 cfg.timeout,
@@ -804,7 +807,9 @@ func (ids *idService) consumeMessage(mes *pb.Identify, c network.Conn, isPush bo
 	} else {
 		addrs = lmaddrs
 	}
-	addrs = filterAddrs(addrs, c.RemoteMultiaddr())
+	if !ids.disableFilterAddrs {
+		addrs = filterAddrs(addrs, c.RemoteMultiaddr())
+	}
 	if len(addrs) > connectedPeerMaxAddrs {
 		addrs = addrs[:connectedPeerMaxAddrs]
 	}
