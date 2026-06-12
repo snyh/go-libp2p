@@ -23,7 +23,7 @@ func TestInvalidOption(t *testing.T) {
 func TestFuzzInMemoryPeerstore(t *testing.T) {
 	// Just create and close a bunch of peerstores. If this leaks, we'll
 	// catch it in the leak check below.
-	for i := 0; i < 100; i++ {
+	for range 100 {
 		ps, err := NewPeerstore()
 		require.NoError(t, err)
 		ps.Close()
@@ -48,8 +48,11 @@ func TestPeerstoreProtoStoreLimits(t *testing.T) {
 
 func TestInMemoryAddrBook(t *testing.T) {
 	clk := mockClock.NewMock()
+	// Shared addr-book suite inserts batches larger than the default
+	// per-peer cap; disable the cap so the suite exercises general
+	// behavior, not the cap path.
 	pt.TestAddrBook(t, func() (pstore.AddrBook, func()) {
-		ps, err := NewPeerstore(WithClock(clk))
+		ps, err := NewPeerstore(WithClock(clk), WithMaxAddressesPerPeer(0))
 		require.NoError(t, err)
 		return ps, func() { ps.Close() }
 	}, clk)
@@ -99,10 +102,10 @@ func BenchmarkGC(b *testing.B) {
 	b.ResetTimer()
 	for i := 0; i < b.N; i++ {
 		b.StopTimer()
-		for i := 0; i < peerCount; i++ {
+		for i := range peerCount {
 			id := peer.ID(strconv.Itoa(i))
 			addrs := make([]multiaddr.Multiaddr, addrsPerPeer)
-			for j := 0; j < addrsPerPeer; j++ {
+			for j := range addrsPerPeer {
 				addrs[j] = multiaddr.StringCast("/ip4/1.2.3.4/tcp/" + strconv.Itoa(j))
 			}
 			ps.AddAddrs(id, addrs, 24*time.Hour)

@@ -110,12 +110,7 @@ func newRelay(t *testing.T) host.Host {
 	)
 	require.NoError(t, err)
 	require.Eventually(t, func() bool {
-		for _, p := range h.Mux().Protocols() {
-			if p == protoIDv2 {
-				return true
-			}
-		}
-		return false
+		return slices.Contains(h.Mux().Protocols(), protoIDv2)
 	}, time.Second, 10*time.Millisecond)
 	return h
 }
@@ -150,7 +145,7 @@ func TestSingleRelay(t *testing.T) {
 	const numCandidates = 3
 	var called bool
 	peerChan := make(chan peer.AddrInfo, numCandidates)
-	for i := 0; i < numCandidates; i++ {
+	for range numCandidates {
 		r := newRelay(t)
 		t.Cleanup(func() { r.Close() })
 		peerChan <- peer.AddrInfo{ID: r.ID(), Addrs: r.Addrs()}
@@ -260,7 +255,7 @@ func TestBackoff(t *testing.T) {
 	}, 2*time.Second, 100*time.Millisecond, "counter load should be 2")
 
 	// make sure we don't add any relays yet
-	for i := 0; i < 2; i++ {
+	for range 2 {
 		cl.AdvanceBy(backoff / 3)
 		require.Equal(t, 1, int(reservations.Load()))
 	}
@@ -272,10 +267,52 @@ func TestBackoff(t *testing.T) {
 	require.Equal(t, 2, int(reservations.Load()))
 }
 
+func TestRemovePeerFromBackoffAfterSuccess(t *testing.T) {
+	const backoff = 20 * time.Second
+	cl := newMockClock()
+
+	rh := newRelay(t)
+
+	var counter atomic.Int32
+	h, err := libp2p.New(
+		libp2p.ForceReachabilityPrivate(),
+	)
+	require.NoError(t, err)
+	defer h.Close()
+
+	ar, err := autorelay.NewAutoRelay(h,
+		autorelay.WithPeerSource(
+			func(context.Context, int) <-chan peer.AddrInfo {
+				// always return the same node, and make sure we don't try to connect to it too frequently
+				counter.Add(1)
+				peerChan := make(chan peer.AddrInfo, 1)
+				peerChan <- peer.AddrInfo{ID: rh.ID(), Addrs: rh.Addrs()}
+				close(peerChan)
+				return peerChan
+			}),
+		autorelay.WithNumRelays(1),
+		autorelay.WithBootDelay(0),
+		autorelay.WithBackoff(backoff),
+		autorelay.WithMinCandidates(1),
+		autorelay.WithMaxCandidateAge(1),
+		autorelay.WithClock(cl),
+		autorelay.WithMinInterval(0),
+	)
+	require.NoError(t, err)
+	ar.Start()
+	defer ar.Close()
+
+	require.Eventually(t, func() bool {
+		return numRelays(h) > 0
+	}, 5*time.Second, 100*time.Millisecond, "should successfully reserve relay")
+
+	require.False(t, ar.IsPeerInBackoff(rh.ID()), "successfully added relay should not be in backoff list")
+}
+
 func TestStaticRelays(t *testing.T) {
 	const numStaticRelays = 3
-	var staticRelays []peer.AddrInfo
-	for i := 0; i < numStaticRelays; i++ {
+	staticRelays := make([]peer.AddrInfo, 0, numStaticRelays)
+	for range numStaticRelays {
 		r := newRelay(t)
 		t.Cleanup(func() { r.Close() })
 		staticRelays = append(staticRelays, peer.AddrInfo{ID: r.ID(), Addrs: r.Addrs()})
@@ -294,7 +331,7 @@ func TestConnectOnDisconnect(t *testing.T) {
 	const num = 3
 	peerChan := make(chan peer.AddrInfo, num)
 	relays := make([]host.Host, 0, num)
-	for i := 0; i < 3; i++ {
+	for range 3 {
 		r := newRelay(t)
 		t.Cleanup(func() { r.Close() })
 		peerChan <- peer.AddrInfo{ID: r.ID(), Addrs: r.Addrs()}
@@ -320,11 +357,11 @@ func TestConnectOnDisconnect(t *testing.T) {
 			r.Close()
 		}
 	}
-
-	require.Eventually(t, func() bool { return numRelays(h) > 0 }, 10*time.Second, 100*time.Millisecond)
-	relaysInUse = usedRelays(h)
-	require.Len(t, relaysInUse, 1)
-	require.NotEqualf(t, oldRelay, relaysInUse[0], "old relay should not be used again")
+	require.EventuallyWithT(t, func(collect *assert.CollectT) {
+		relaysInUse = usedRelays(h)
+		require.Len(collect, relaysInUse, 1)
+		assert.NotEqualf(collect, oldRelay, relaysInUse[0], "old relay should not be used again")
+	}, 10*time.Second, 100*time.Millisecond)
 }
 
 func TestMaxAge(t *testing.T) {
@@ -335,7 +372,7 @@ func TestMaxAge(t *testing.T) {
 	peerChan2 := make(chan peer.AddrInfo, num)
 	relays1 := make([]host.Host, 0, num)
 	relays2 := make([]host.Host, 0, num)
-	for i := 0; i < num; i++ {
+	for range num {
 		r1 := newRelay(t)
 		t.Cleanup(func() { r1.Close() })
 		peerChan1 <- peer.AddrInfo{ID: r1.ID(), Addrs: r1.Addrs()}
@@ -415,10 +452,8 @@ func TestMaxAge(t *testing.T) {
 	}
 
 	require.Eventually(t, func() bool {
-		for _, id := range ids {
-			if id == relays[0] {
-				return true
-			}
+		if slices.Contains(ids, relays[0]) {
+			return true
 		}
 		fmt.Println("waiting for", ids, "to contain", relays[0])
 		return false
@@ -428,10 +463,10 @@ func TestMaxAge(t *testing.T) {
 
 func TestReconnectToStaticRelays(t *testing.T) {
 	cl := newMockClock()
-	var staticRelays []peer.AddrInfo
 	const numStaticRelays = 1
+	staticRelays := make([]peer.AddrInfo, 0, numStaticRelays)
 	relays := make([]host.Host, 0, numStaticRelays)
-	for i := 0; i < numStaticRelays; i++ {
+	for range numStaticRelays {
 		r := newRelay(t)
 		t.Cleanup(func() { r.Close() })
 		relays = append(relays, r)

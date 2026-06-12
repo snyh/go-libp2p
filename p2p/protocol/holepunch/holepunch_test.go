@@ -250,7 +250,7 @@ func TestEndToEndSimConnect(t *testing.T) {
 
 			h1 := MustNewHost(t,
 				quicSimnet(false, router),
-				libp2p.EnableHolePunching(holepunch.WithTracer(h1tr), holepunch.DirectDialTimeout(100*time.Millisecond), SetLegacyBehavior(useLegacyHolePunchingBehavior)),
+				libp2p.EnableHolePunching(holepunch.WithTracer(h1tr), holepunch.DirectDialTimeout(100*time.Millisecond)),
 				libp2p.ListenAddrs(ma.StringCast("/ip4/2.2.0.1/udp/8000/quic-v1")),
 				libp2p.ResourceManager(&network.NullResourceManager{}),
 				libp2p.ForceReachabilityPrivate(),
@@ -261,7 +261,7 @@ func TestEndToEndSimConnect(t *testing.T) {
 				libp2p.ListenAddrs(ma.StringCast("/ip4/2.2.0.2/udp/8001/quic-v1")),
 				libp2p.ResourceManager(&network.NullResourceManager{}),
 				connectToRelay(&relay),
-				libp2p.EnableHolePunching(holepunch.WithTracer(h2tr), holepunch.DirectDialTimeout(100*time.Millisecond), SetLegacyBehavior(useLegacyHolePunchingBehavior)),
+				libp2p.EnableHolePunching(holepunch.WithTracer(h2tr), holepunch.DirectDialTimeout(100*time.Millisecond)),
 				libp2p.ForceReachabilityPrivate(),
 			)
 
@@ -539,14 +539,15 @@ func TestFailuresOnResponder(t *testing.T) {
 			defer relay.Close()
 
 			time.Sleep(100 * time.Millisecond)
-
+			// Apparently changing the order of the following two flakiness.
+			// https://github.com/libp2p/go-libp2p/issues/3440
+			require.EventuallyWithT(t, func(c *assert.CollectT) {
+				assert.Contains(c, h1.Mux().Protocols(), holepunch.Protocol)
+			}, time.Second, 100*time.Millisecond)
 			require.NoError(t, h1.Connect(context.Background(), peer.AddrInfo{
 				ID:    h2.ID(),
 				Addrs: h2.Addrs(),
 			}))
-			require.EventuallyWithT(t, func(c *assert.CollectT) {
-				assert.Contains(c, h1.Mux().Protocols(), holepunch.Protocol)
-			}, time.Second, 100*time.Millisecond)
 
 			s, err := h2.NewStream(network.WithAllowLimitedConn(context.Background(), "holepunch"), h1.ID(), holepunch.Protocol)
 			require.NoError(t, err)
@@ -636,7 +637,8 @@ func quicSimnet(isPubliclyReachably bool, router *simnet.SimpleFirewallRouter) l
 			if isPubliclyReachably {
 				router.SetAddrPubliclyReachable(address)
 			}
-			c := simnet.NewSimConn(address, router)
+			c := simnet.NewSimConn(address)
+			router.AddNode(address, c)
 			return c, nil
 		}))
 }
@@ -656,20 +658,6 @@ func waitForHolePunchingSvcActive(t *testing.T, h host.Host) {
 	require.EventuallyWithT(t, func(c *assert.CollectT) {
 		assert.Contains(c, h.Mux().Protocols(), holepunch.Protocol)
 	}, time.Second, 100*time.Millisecond)
-}
-
-// setLegacyBehavior is an option that controls the isClient behavior of the hole punching service.
-// Prior to https://github.com/libp2p/go-libp2p/pull/3044, go-libp2p would
-// pick the opposite roles for client/server a hole punch. Setting this to
-// true preserves that behavior.
-//
-// Currently, only exposed for testing purposes.
-// Do not set this unless you know what you are doing.
-func SetLegacyBehavior(legacyBehavior bool) holepunch.Option {
-	return func(s *holepunch.Service) error {
-		s.SetLegacyBehavior(legacyBehavior)
-		return nil
-	}
 }
 
 // TestEndToEndSimConnectQUICReuse tests that hole punching works if we are

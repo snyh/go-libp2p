@@ -15,7 +15,7 @@ import (
 	pool "github.com/libp2p/go-buffer-pool"
 	logging "github.com/libp2p/go-libp2p/gologshim"
 	"github.com/pion/ice/v4"
-	"github.com/pion/stun"
+	"github.com/pion/stun/v3"
 )
 
 var log = logging.Logger("webrtc-udpmux")
@@ -24,6 +24,12 @@ var log = logging.Logger("webrtc-udpmux")
 // It is fine for this number to be higher than the actual path MTU as this value is not
 // used to decide the packet size on the write path.
 const ReceiveBufSize = 1500
+
+// maxAddrsPerUfrag bounds the number of remote addresses we will track for a
+// single ufrag. ICE typically advertises a handful of candidates per session
+// (host + server-reflexive + relay, per IP family); 32 leaves comfortable
+// headroom while keeping the per-ufrag bookkeeping bounded.
+const maxAddrsPerUfrag = 32
 
 type Candidate struct {
 	Ufrag string
@@ -289,6 +295,12 @@ func (mux *UDPMux) getOrCreateConn(ufrag string, isIPv6 bool, _ *UDPMux, addr ne
 	defer mux.mx.Unlock()
 
 	if conn, ok := mux.ufragMap[key]; ok {
+		// Cap per-ufrag address tracking. Once we have already associated
+		// maxAddrsPerUfrag addresses with this connection, ignore further
+		// candidates rather than letting the bookkeeping grow unbounded.
+		if len(mux.ufragAddrMap[key]) >= maxAddrsPerUfrag {
+			return false, conn
+		}
 		mux.addrMap[addr.String()] = conn
 		mux.ufragAddrMap[key] = append(mux.ufragAddrMap[key], addr)
 		return false, conn

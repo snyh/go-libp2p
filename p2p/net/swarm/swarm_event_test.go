@@ -106,7 +106,7 @@ func TestNoDeadlockWhenConsumingConnectednessEvents(t *testing.T) {
 		}
 	}()
 
-	for i := 0; i < 10; i++ {
+	for range 10 {
 		// Connect and disconnect to trigger a bunch of events
 		_, err := dialer.DialPeer(context.Background(), listener.LocalPeer())
 		require.NoError(t, err)
@@ -120,7 +120,7 @@ func TestConnectednessEvents(t *testing.T) {
 	s1, sub1 := newSwarmWithSubscription(t)
 	const N = 100
 	peers := make([]*Swarm, N)
-	for i := 0; i < N; i++ {
+	for i := range N {
 		peers[i] = swarmt.GenSwarm(t)
 	}
 
@@ -128,7 +128,7 @@ func TestConnectednessEvents(t *testing.T) {
 	done := make(chan struct{})
 	go func() {
 		defer close(done)
-		for i := 0; i < N; i++ {
+		for range N {
 			e := <-sub1.Out()
 			evt, ok := e.(event.EvtPeerConnectednessChanged)
 			if !ok {
@@ -141,7 +141,7 @@ func TestConnectednessEvents(t *testing.T) {
 			}
 		}
 	}()
-	for i := 0; i < N; i++ {
+	for i := range N {
 		s1.Peerstore().AddAddrs(peers[i].LocalPeer(), []ma.Multiaddr{peers[i].ListenAddresses()[0]}, time.Hour)
 		_, err := s1.DialPeer(context.Background(), peers[i].LocalPeer())
 		require.NoError(t, err)
@@ -156,7 +156,7 @@ func TestConnectednessEvents(t *testing.T) {
 	done = make(chan struct{})
 	go func() {
 		defer close(done)
-		for i := 0; i < N/2; i++ {
+		for range N / 2 {
 			e := <-sub1.Out()
 			evt, ok := e.(event.EvtPeerConnectednessChanged)
 			if !ok {
@@ -169,7 +169,7 @@ func TestConnectednessEvents(t *testing.T) {
 			}
 		}
 	}()
-	for i := 0; i < N/2; i++ {
+	for i := range N / 2 {
 		err := s1.ClosePeer(peers[i].LocalPeer())
 		require.NoError(t, err)
 	}
@@ -208,7 +208,7 @@ func TestConnectednessEventDeadlock(t *testing.T) {
 	s1, sub1 := newSwarmWithSubscription(t)
 	const N = 100
 	peers := make([]*Swarm, N)
-	for i := 0; i < N; i++ {
+	for i := range N {
 		peers[i] = swarmt.GenSwarm(t)
 	}
 
@@ -217,9 +217,10 @@ func TestConnectednessEventDeadlock(t *testing.T) {
 	go func() {
 		defer close(done)
 		count := 0
+		// sleep to simulate a slow consumer
+		time.Sleep(1 * time.Second)
 		for count < N {
 			e := <-sub1.Out()
-			// sleep to simulate a slow consumer
 			evt, ok := e.(event.EvtPeerConnectednessChanged)
 			if !ok {
 				t.Error("invalid event received", e)
@@ -228,11 +229,13 @@ func TestConnectednessEventDeadlock(t *testing.T) {
 			if evt.Connectedness != network.Connected {
 				continue
 			}
+			// sleep to simulate a slow consumer
+			time.Sleep(20 * time.Millisecond)
 			count++
 			s1.ClosePeer(evt.Peer)
 		}
 	}()
-	for i := 0; i < N; i++ {
+	for i := range N {
 		s1.Peerstore().AddAddrs(peers[i].LocalPeer(), []ma.Multiaddr{peers[i].ListenAddresses()[0]}, time.Hour)
 		go func(i int) {
 			_, err := s1.DialPeer(context.Background(), peers[i].LocalPeer())
@@ -241,7 +244,7 @@ func TestConnectednessEventDeadlock(t *testing.T) {
 	}
 	select {
 	case <-done:
-	case <-time.After(100 * time.Second):
+	case <-time.After(20 * time.Second):
 		t.Fatal("expected all connectedness events to be completed")
 	}
 }
@@ -250,23 +253,21 @@ func TestConnectednessEventDeadlockWithDial(t *testing.T) {
 	s1, sub1 := newSwarmWithSubscription(t)
 	const N = 200
 	peers := make([]*Swarm, N)
-	for i := 0; i < N; i++ {
+	for i := range N {
 		peers[i] = swarmt.GenSwarm(t)
 	}
 	peers2 := make([]*Swarm, N)
-	for i := 0; i < N; i++ {
+	for i := range N {
 		peers2[i] = swarmt.GenSwarm(t)
 	}
 
 	// First check all connected events
 	done := make(chan struct{})
 	var subWG sync.WaitGroup
-	subWG.Add(1)
-	go func() {
-		defer subWG.Done()
+	subWG.Go(func() {
 		count := 0
 		for {
-			var e interface{}
+			var e any
 			select {
 			case e = <-sub1.Out():
 			case <-done:
@@ -290,10 +291,10 @@ func TestConnectednessEventDeadlockWithDial(t *testing.T) {
 				cancel()
 			}
 		}
-	}()
+	})
 	var wg sync.WaitGroup
 	wg.Add(N)
-	for i := 0; i < N; i++ {
+	for i := range N {
 		s1.Peerstore().AddAddrs(peers[i].LocalPeer(), []ma.Multiaddr{peers[i].ListenAddresses()[0]}, time.Hour)
 		go func(i int) {
 			ctx, cancel := context.WithTimeout(context.Background(), 1*time.Second)
