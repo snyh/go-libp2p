@@ -129,7 +129,22 @@ func (c *Client) dialPeer(ctx context.Context, relay, dest peer.AddrInfo) (*Conn
 	if err != nil {
 		return nil, fmt.Errorf("error opening hop stream to relay: %w", err)
 	}
-	return c.connect(s, dest)
+	// 拨号取消只终止当前 HOP 流，保留共享的中继连接。
+	resetDone := make(chan struct{})
+	stopReset := context.AfterFunc(ctx, func() {
+		s.Reset()
+		close(resetDone)
+	})
+	conn, err := c.connect(s, dest)
+	if !stopReset() {
+		<-resetDone
+		return nil, ctx.Err()
+	}
+	if ctx.Err() != nil {
+		s.Reset()
+		return nil, ctx.Err()
+	}
+	return conn, err
 }
 
 func (c *Client) connect(s network.Stream, dest peer.AddrInfo) (*Conn, error) {
