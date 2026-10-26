@@ -53,7 +53,8 @@ func newQuicListener(tr RefCountedQUICTransport, quicConfig *quic.Config) (*quic
 		addrs:     localMultiaddrs,
 	}
 	tlsConf := &tls.Config{
-		SessionTicketsDisabled: true, // This is set for the config for client, but we set it here as well: https://github.com/quic-go/quic-go/issues/4029
+		// 禁用共享监听器的 ticket key（quic-go#4029）；QUIC transport 的 Go 1.26 兼容处理依赖此设置。
+		SessionTicketsDisabled: true,
 		GetConfigForClient: func(info *tls.ClientHelloInfo) (*tls.Config, error) {
 			cl.protocolsMu.Lock()
 			defer cl.protocolsMu.Unlock()

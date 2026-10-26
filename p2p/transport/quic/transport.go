@@ -290,6 +290,11 @@ func (t *transport) Listen(addr ma.Multiaddr) (tpt.Listener, error) {
 		// the peer ID calculated here, we don't actually receive the peer's public key
 		// from the key chan.
 		conf, _ := t.identity.ConfigForPeer("")
+		// quicreuse 的外层配置已禁用 ticket key，因此仍不会签发 ticket 或恢复会话。
+		// 让 SendSessionTicket 返回旧 quic-go 能处理的缺少 key 错误，避免 Go 1.26
+		// 在 SessionTicketsDisabled 为 true 时返回空事件而触发 panic。
+		// https://github.com/quic-go/quic-go/issues/5572
+		conf.SessionTicketsDisabled = false
 		return conf, nil
 	}
 	tlsConf.NextProtos = []string{"libp2p"}
